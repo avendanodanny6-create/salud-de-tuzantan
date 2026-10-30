@@ -27,6 +27,15 @@ footer{padding:20px;font-size:12px;color:#61766b;line-height:1.5}
 @media(min-width:750px){.content{display:grid;grid-template-columns:1.2fr .8fr;gap:15px}#map{height:520px}}
 </style>
 </head>
+<link rel="manifest" href="./manifest.webmanifest">
+  <script>
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./sw.js")
+      .catch(error => console.error("Error al registrar SW:", error));
+  });
+}
+  </script>
 <body>
 
 <header>
