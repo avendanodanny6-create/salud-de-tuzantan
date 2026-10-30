@@ -1,0 +1,201 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Salud de Tuzantán</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,sans-serif;background:#f0f8f4;color:#174638}
+header{background:#087f5b;color:white;padding:24px 16px;text-align:center}
+header h1{margin:0;font-size:27px}
+header p{margin:9px 0 0}
+main{max-width:1100px;margin:auto;padding:15px}
+.panel{background:white;padding:16px;border-radius:16px;box-shadow:0 3px 12px #0001}
+button,select{padding:12px;border-radius:10px;border:1px solid #ddd;font-size:15px;margin:4px}
+button{background:#087f5b;color:white;font-weight:bold}
+select{background:white;color:#174638}
+#map{height:360px;border-radius:12px;margin:15px 0}
+#status{color:#547367;font-size:14px;margin:12px 4px}
+.card{padding:13px;border:1px solid #dce9e1;border-radius:12px;margin:10px 0}
+.card h3{margin:0 0 8px}
+.card p{font-size:14px;line-height:1.5;color:#526c60}
+a{color:#087f5b;font-weight:bold}
+footer{padding:20px;font-size:12px;color:#61766b;line-height:1.5}
+@media(min-width:750px){.content{display:grid;grid-template-columns:1.2fr .8fr;gap:15px}#map{height:520px}}
+</style>
+</head>
+<body>
+
+<header>
+<h1>✚ Salud de Tuzantán</h1>
+<p>Encuentra servicios de salud cerca de ti</p>
+</header>
+
+<main>
+<div class="panel">
+<button id="buscar" onclick="obtenerUbicacion()">📍 Buscar cerca de mí</button>
+
+<select id="filtro" onchange="mostrarResultados()">
+<option value="todos">Todos los establecimientos</option>
+<option value="hospital">Hospitales</option>
+<option value="clinic">Clínicas y centros de salud</option>
+<option value="doctor">Consultorios médicos</option>
+</select>
+
+<p id="status">Pulsa el botón para encontrar centros de salud en un radio de 50 km.</p>
+
+<div class="content">
+<div>
+<div id="map"></div>
+</div>
+<div>
+<h2>Centros encontrados</h2>
+<div id="resultados">Los resultados aparecerán aquí.</div>
+</div>
+</div>
+</div>
+</main>
+
+<footer>
+<p>Información basada en OpenStreetMap. Los horarios, teléfonos y datos de accesibilidad pueden no estar disponibles o estar desactualizados. Confirma la información directamente con cada establecimiento.</p>
+<p>Las distancias son aproximadas en línea recta. Esta aplicación no sustituye los servicios oficiales de emergencia.</p>
+</footer>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const mapa=L.map('map').setView([15.145,-92.416],11);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+attribution:'© OpenStreetMap contributors'
+}).addTo(mapa);
+
+let centros=[];
+let marcadores=L.layerGroup().addTo(mapa);
+let marcadorUsuario=null;
+
+function distancia(a,b,c,d){
+const R=6371;
+const rad=x=>x*Math.PI/180;
+const x=Math.sin(rad(c-a)/2)**2+
+Math.cos(rad(a))*Math.cos(rad(c))*
+Math.sin(rad(d-b)/2)**2;
+return 2*R*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));
+}
+
+function obtenerUbicacion(){
+if(!navigator.geolocation){
+document.getElementById('status').textContent='Tu navegador no permite obtener la ubicación.';
+return;
+}
+document.getElementById('status').textContent='Obteniendo tu ubicación...';
+navigator.geolocation.getCurrentPosition(
+p=>buscarCentros(p.coords.latitude,p.coords.longitude),
+()=>document.getElementById('status').textContent='No se pudo obtener tu ubicación. Activa el permiso de ubicación.',
+{enableHighAccuracy:true,timeout:15000}
+);
+}
+
+async function buscarCentros(lat,lon){
+document.getElementById('status').textContent='Buscando centros de salud en 50 km...';
+
+mapa.setView([lat,lon],10);
+if(marcadorUsuario)marcadorUsuario.remove();
+marcadorUsuario=L.marker([lat,lon]).addTo(mapa).bindPopup('Tu ubicación').openPopup();
+
+const consulta=`[out:json][timeout:60];
+(
+nwr["amenity"~"^(hospital|clinic|doctors|health_post)$"](around:50000,${lat},${lon});
+nwr["healthcare"~"^(hospital|clinic|doctor|centre|health_centre|health_post)$"](around:50000,${lat},${lon});
+);
+out center tags;`;
+
+try{
+let respuesta=await fetch('https://overpass-api.de/api/interpreter',{
+method:'POST',
+headers:{'Content-Type':'application/x-www-form-urlencoded'},
+body:'data='+encodeURIComponent(consulta)
+});
+if(!respuesta.ok)throw Error();
+let datos=await respuesta.json();
+
+centros=datos.elements.map(e=>{
+let punto=e.type==='node'?{lat:e.lat,lon:e.lon}:e.center;
+if(!punto)return null;
+let t=e.tags||{};
+let tipo=t.amenity||t.healthcare||'';
+let categoria=tipo==='hospital'?'hospital':
+['clinic','health_post','centre','health_centre'].includes(tipo)?'clinic':'doctor';
+
+return{
+lat:punto.lat,
+lon:punto.lon,
+nombre:t.name||t['name:es']||'Establecimiento sin nombre',
+categoria,
+telefono:t.phone||t['contact:phone']||'No registrado',
+horario:t.opening_hours||'No registrado',
+acceso:t.wheelchair==='yes'?'Accesible según el mapa':
+t.wheelchair==='no'?'No accesible según el mapa':
+t.wheelchair==='limited'?'Accesibilidad limitada':'Sin información',
+distancia:distancia(lat,lon,punto.lat,punto.lon),
+};
+}).filter(Boolean).sort((a,b)=>a.distancia-b.distancia);
+
+document.getElementById('status').textContent=
+'Se encontraron '+centros.length+' establecimientos registrados.';
+
+mostrarResultados();
+
+}catch(error){
+document.getElementById('status').textContent=
+'No se pudo realizar la búsqueda. Comprueba tu conexión e inténtalo más tarde.';
+document.getElementById('resultados').textContent='Servicio de búsqueda no disponible.';
+}
+}
+
+function mostrarResultados(){
+let filtro=document.getElementById('filtro').value;
+let lista=centros.filter(c=>filtro==='todos'||c.categoria===filtro);
+
+marcadores.clearLayers();
+lista.forEach(c=>{
+L.marker([c.lat,c.lon]).addTo(marcadores)
+.bindPopup(c.nombre);
+});
+
+let contenedor=document.getElementById('resultados');
+if(!lista.length){
+contenedor.innerHTML='<p>No hay resultados para esta categoría.</p>';
+return;
+}
+
+contenedor.innerHTML=lista.map(c=>{
+let tipo=c.categoria==='hospital'?'Hospital':
+c.categoria==='clinic'?'Clínica o centro de salud':'Consultorio médico';
+let ruta='https://www.google.com/maps/dir/?api=1&destination='+c.lat+','+c.lon;
+
+return `<div class="card">
+<h3>${escapar(c.nombre)}</h3>
+<strong>${tipo}</strong>
+<p>📍 Distancia aproximada: ${c.distancia.toFixed(1)} km</p>
+<p>☎️ Teléfono: ${escapar(c.telefono)}</p>
+<p>🕒 Horario: ${escapar(c.horario)}</p>
+<p>♿ ${escapar(c.acceso)}</p>
+<a href="${ruta}" target="_blank" rel="noopener">Cómo llegar</a>
+${c.telefono!=='No registrado'?
+' · <a href="tel:'+escapar(c.telefono)+'">Llamar</a>':''}
+</div>`;
+}).join('');
+}
+
+function escapar(s){
+return String(s).replace(/[&<>"']/g,c=>({
+'&':'&amp;','<':'&lt;','>':'&gt;',
+'"':'&quot;',"'":'&#39;'
+}[c]));
+}
+</script>
+</body>
+</html>
