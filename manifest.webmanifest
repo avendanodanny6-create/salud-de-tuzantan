@@ -1,0 +1,22 @@
+
+{
+  "id": "./",
+  "name": "Salud de Tuzantán",
+  "short_name": "Salud Tuzantán",
+  "description": "Aplicación para localizar hospitales, clínicas y centros de salud en Tuzantán y sus alrededores.",
+  "lang": "es-MX",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#1677a8",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
