@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <meta name="theme-color" content="#0d9488">
+  <title>Salud Cerca</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    :root {
+      --bg: #f0fdfa;
+      --bg-card: #ffffff;
+      --texto: #134e4a;
+      --texto-suave: #64748b;
+      --texto-medio: #475569;
+      --primario: #0d9488;
+      --primario-oscuro: #0f766e;
+      --borde: #e2e8f0;
+      --filtro-bg: #ffffff;
+      --fav-bg: #fffbeb;
+      --fav-borde: #f59e0b;
+      --fav-texto: #92400e;
+      --input-bg: #ffffff;
+      --input-borde: #cbd5e1;
+    }
+
+    body.oscuro {
+      --bg: #0f172a;
+      --bg-card: #1e293b;
+      --texto: #e2e8f0;
+      --texto-suave: #94a3b8;
+      --texto-medio: #cbd5e1;
+      --primario: #2dd4bf;
+      --primario-oscuro: #5eead4;
+      --borde: #334155;
+      --filtro-bg: #1e293b;
+      --fav-bg: #422006;
+      --fav-borde: #f59e0b;
+      --fav-texto: #fcd34d;
+      --input-bg: #0f172a;
+      --input-borde: #475569;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
+    body { background: var(--bg); color: var(--texto); padding-bottom: 80px; transition: background 0.3s, color 0.3s; }
+
+    header {
+      background: var(--primario); color: white; padding: 12px 16px;
+      display: flex; align-items: center; justify-content: space-between;
+      position: sticky; top: 0; z-index: 1000;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      transition: background 0.3s;
+    }
+    header h1 { font-size: 1.15rem; font-weight: 700; }
+    .header-botones { display: flex; gap: 8px; }
+    .btn-icono {
+      background: rgba(255,255,255,0.2); border: none; color: white;
+      width: 40px; height: 40px; border-radius: 50%; font-size: 1.1rem;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      transition: background 0.2s, transform 0.15s;
+    }
+    .btn-icono:hover { background: rgba(255,255,255,0.35); }
+    .btn-icono:active { transform: scale(0.92); }
+    .btn-icono.girando { animation: girar 0.8s linear infinite; }
+    @keyframes girar { to { transform: rotate(360deg); } }
+
+    .buscador-contenedor {
+      padding: 10px 12px;
+      background: var(--filtro-bg);
+      position: sticky; top: 64px; z-index: 998;
+      transition: background 0.3s;
+    }
+    .buscador-contenedor input {
+      width: 100%; padding: 10px 14px;
+      border: 1.5px solid var(--input-borde); border-radius: 22px;
+      font-size: 0.9rem; background: var(--input-bg); color: var(--texto);
+      outline: none; transition: border-color 0.2s, background 0.3s;
+    }
+    .buscador-contenedor input:focus { border-color: var(--primario); }
+
+    .filtros {
+      display: flex; flex-wrap: wrap; gap: 8px; padding: 0 12px 12px 12px;
+      background: var(--filtro-bg); position: sticky; top: 114px; z-index: 997;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+      transition: background 0.3s;
+    }
+    .filtros button {
+      flex: 1 1 auto; min-width: 70px; padding: 8px 10px;
+      border: 2px solid var(--primario); background: var(--bg-card); color: var(--primario);
+      border-radius: 20px; font-size: 0.8rem; font-weight: 600;
+      cursor: pointer; transition: all 0.2s; white-space: nowrap;
+    }
+    .filtros button.activo { background: var(--primario); color: white; }
+
+    #mapa { height: 260px; width: 100%; margin: 0; }
+
+    #estado {
+      padding: 12px; text-align: center; font-size: 0.9rem;
+      color: var(--texto-suave); background: var(--bg-card);
+      transition: background 0.3s, color 0.3s;
+    }
+
+    #lista { padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+
+    .tarjeta {
+      background: var(--bg-card); border-radius: 12px; padding: 14px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08); border-left: 4px solid var(--primario);
+      position: relative; transition: background 0.3s, border-color 0.3s;
+    }
+    .tarjeta.favorita { border-left-color: var(--fav-borde); background: var(--fav-bg); }
+    .tarjeta h3 { font-size: 1rem; margin-bottom: 4px; color: var(--primario-oscuro); padding-right: 36px; }
+    .tarjeta .tipo {
+      display: inline-block; font-size: 0.7rem; background: rgba(13,148,136,0.12);
+      color: var(--primario-oscuro); padding: 2px 8px; border-radius: 10px;
+      margin-bottom: 6px; text-transform: capitalize;
+    }
+    .tarjeta .distancia { font-size: 0.8rem; color: var(--texto-suave); margin-bottom: 6px; }
+    .tarjeta .direccion { font-size: 0.8rem; color: var(--texto-medio); }
+    .tarjeta .telefono { font-size: 0.8rem; color: var(--texto-medio); margin-top: 2px; }
+    .tarjeta .acciones {
+      display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px;
+    }
+    .tarjeta .acciones a, .tarjeta .acciones button {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 0.78rem; font-weight: 600; text-decoration: none;
+      padding: 6px 12px; border-radius: 16px; cursor: pointer;
+      border: none; transition: opacity 0.2s;
+    }
+    .tarjeta .acciones a:hover, .tarjeta .acciones button:hover { opacity: 0.8; }
+    .btn-ver-mapa { background: rgba(13,148,136,0.12); color: var(--primario-oscuro); }
+    .btn-como-llegar { background: var(--primario); color: white; }
+    .btn-llamar { background: #16a34a; color: white; }
+
+    .btn-fav {
+      position: absolute; top: 10px; right: 10px;
+      background: none; border: none; font-size: 1.5rem;
+      cursor: pointer; line-height: 1; padding: 2px;
+      transition: transform 0.15s;
+    }
+    .btn-fav:active { transform: scale(1.3); }
+    .btn-fav.no-fav { filter: grayscale(1); opacity: 0.45; }
+
+    .vacio { text-align: center; color: var(--texto-suave); padding: 40px 20px; font-size: 0.9rem; }
+
+    .barra-fav {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: var(--bg-card); border-top: 1px solid var(--borde);
+      padding: 10px 16px; display: flex; align-items: center; justify-content: space-between;
+      box-shadow: 0 -2px 8px rgba(0,0,0,0.08); z-index: 1000;
+      max-width: 500px; margin: 0 auto;
+      transition: background 0.3s, border-color 0.3s;
+    }
+    .barra-fav span { font-size: 0.85rem; color: var(--texto-medio); font-weight: 600; }
+    .barra-fav button {
+      background: var(--fav-borde); color: white; border: none;
+      padding: 8px 16px; border-radius: 20px; font-size: 0.85rem;
+      font-weight: 600; cursor: pointer;
+    }
+    .barra-fav button:disabled { background: #cbd5e1; cursor: not-allowed; }
+
+    .modal-fondo {
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+      z-index: 2000; align-items: flex-end; justify-content: center;
+    }
+    .modal-fondo.abierto { display: flex; }
+    .modal {
+      background: var(--bg-card); width: 100%; max-width: 500px;
+      max-height: 80vh; border-radius: 16px 16px 0 0; overflow-y: auto;
+      padding: 0 0 20px 0; animation: subir 0.25s ease-out;
+      transition: background 0.3s;
+    }
+    @keyframes subir { from { transform: translateY(100%); } to { transform: translateY(0); } }
+    .modal-header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 16px; border-bottom: 1px solid var(--borde); position: sticky; top: 0;
+      background: var(--bg-card); z-index: 1;
+    }
+    .modal-header h2 { font-size: 1.1rem; color: var(--primario-oscuro); }
+    .modal-header button {
+      background: none; border: none; font-size: 1.6rem; cursor: pointer; color: var(--texto-suave);
+    }
+    #lista-fav { padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+    .fav-vacio { text-align: center; padding: 40px 20px; color: var(--texto-suave); font-size: 0.9rem; }
+    .fav-item {
+      background: var(--fav-bg); border-radius: 10px; padding: 12px;
+      border-left: 4px solid var(--fav-borde); display: flex;
+      justify-content: space-between; align-items: flex-start; gap: 10px;
+    }
+    .fav-item h4 { font-size: 0.95rem; color: var(--fav-texto); margin-bottom: 4px; }
+    .fav-item p { font-size: 0.78rem; color: var(--texto-suave); }
+    .fav-item .acciones { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
+    .fav-item button {
+      background: rgba(220,38,38,0.15); color: #dc2626; border: none;
+      padding: 6px 10px; border-radius: 8px; font-size: 0.75rem;
+      font-weight: 600; cursor: pointer;
+    }
+    .fav-item .ver { background: rgba(13,148,136,0.15); color: var(--primario-oscuro); }
+    .fav-item .llegar { background: rgba(13,148,136,0.15); color: var(--primario-oscuro); }
+    .fav-item .llamar { background: rgba(22,163,74,0.15); color: #16a34a; }
+
+    .menu-llegar-fondo {
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+      z-index: 3000; align-items: center; justify-content: center; padding: 20px;
+    }
+    .menu-llegar-fondo.abierto { display: flex; }
+    .menu-llegar {
+      background: var(--bg-card); border-radius: 16px; width: 100%;
+      max-width: 340px; overflow: hidden; animation: aparecer 0.2s ease-out;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+    }
+    @keyframes aparecer { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+    .menu-llegar h3 {
+      padding: 16px; font-size: 1rem; color: var(--primario-oscuro);
+      border-bottom: 1px solid var(--borde);
+    }
+    .menu-llegar a {
+      display: flex; align-items: center; gap: 12px;
+      padding: 14px 16px; text-decoration: none; color: var(--texto);
+      font-size: 0.9rem; font-weight: 500;
+      border-bottom: 1px solid var(--borde);
+      transition: background 0.15s;
+    }
+    .menu-llegar a:last-of-type { border-bottom: none; }
+    .menu-llegar a:hover { background: rgba(13,148,136,0.08); }
+    .menu-llegar a .icono { font-size: 1.3rem; }
+    .menu-llegar .cancelar {
+      width: 100%; padding: 14px; background: none; border: none;
+      border-top: 1px solid var(--borde); color: var(--texto-suave);
+      font-size: 0.9rem; font-weight: 600; cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🏥 Salud Cerca</h1>
+    <div class="header-botones">
+      <button class="btn-icono" id="btn-tema" title="Cambiar tema">🌙</button>
+      <button class="btn-icono" id="btn-refresh" title="Volver a buscar">🔄</button>
+    </div>
+  </header>
+
+  <div class="buscador-contenedor">
+    <input type="search" id="buscador" placeholder="🔍 Buscar por nombre, calle o tipo..." autocomplete="off">
+  </div>
+
+  <div class="filtros" id="filtros">
+    <button data-tipo="todos" class="activo">Todos</button>
+    <button data-tipo="farmacia">Farmacias</button>
+    <button data-tipo="hospital">Hospitales</button>
+    <button data-tipo="clinica">Clínicas</button>
+    <button data-tipo="urgencias">Urgencias</button>
+    <button data-tipo="consultorio">Consultorios</button>
+  </div>
+
+  <div id="mapa"></div>
+  <div id="estado">📍 Obteniendo tu ubicación...</div>
+  <div id="lista"></div>
+
+  <div class="barra-fav">
+    <span id="contador-fav">⭐ 0 favoritos</span>
+    <button id="btn-ver-fav" disabled>Ver favoritos</button>
+  </div>
+
+  <div class="modal-fondo" id="modal-fav">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>⭐ Favoritos</h2>
+        <button id="cerrar-modal">×</button>
+      </div>
+      <div id="lista-fav"></div>
+    </div>
+  </div>
+
+  <div class="menu-llegar-fondo" id="menu-llegar">
+    <div class="menu-llegar">
+      <h3 id="menu-llegar-titulo">Cómo llegar</h3>
+      <a id="link-google" href="#" target="_blank" rel="noopener">
+        <span class="icono">🗺️</span> Abrir en Google Maps
+      </a>
+      <a id="link-waze" href="#" target="_blank" rel="noopener">
+        <span class="icono">🚗</span> Abrir en Waze
+      </a>
+      <a id="link-osm" href="#" target="_blank" rel="noopener">
+        <span class="icono">🧭</span> Abrir en OpenStreetMap
+      </a>
+      <button class="cancelar" id="cerrar-menu-llegar">Cancelar</button>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
